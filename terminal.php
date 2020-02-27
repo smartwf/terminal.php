@@ -10,7 +10,7 @@
 /* Choose a random key Like ('Mmbuge8maD5VAUMc') for Security */
 define('KEY', 'Mmbuge8maD5VAUMc');
 
-if (!isset($_GET['key']) && $_GET['key'] != KEY)
+if (KEY != '' && !isset($_GET['key']) && $_GET['key'] != KEY)
     header('location: /');
 
 class CustomCommands{
@@ -257,28 +257,8 @@ else{
         $(document).keydown(function(e) {
             var keyCode = typeof e.which === "number" ? e.which : e.keyCode;
 
-            if (keyCode === 32
-                || keyCode === 222
-                || keyCode === 220
-                || (
-                    (keyCode >= 45 && keyCode <= 195)
-                    && !(keyCode >= 112 && keyCode <= 123)
-                    && keyCode != 46
-                    && keyCode != 91
-                    && keyCode != 93
-                    && keyCode != 144
-                    && keyCode != 145
-                    && keyCode != 45
-                )
-            ){
-                type(e.key);
-                history_index = 0;
-                suggest = false;
-                $('terminal content').scrollTop($('terminal content').prop("scrollHeight"));
-            }
-
             /* Tab, Backspace and Delete key */
-            else if (keyCode === 8 || keyCode === 9 || keyCode === 46) {
+            if (keyCode === 8 || keyCode === 9 || keyCode === 46) {
                 e.preventDefault();
                 if (command !== ''){
                     if (keyCode === 8)
@@ -289,7 +269,7 @@ else{
             }
 
             /* Ctrl + C */
-            else if (e.ctrlKey === true && keyCode===67){
+            else if (e.ctrlKey && keyCode === 67){
                 addToHistory(command);
                 endLine();
                 newLine();
@@ -360,11 +340,32 @@ else{
                     && history_index !== 0) {
 
                     history_index++;
-                    command = command_history[command_history.length+history_index];
+                    command = (history_index === 0) ? '' : command_history[command_history.length+history_index];
                     printTypedCommand();
                     normalizeHtml();
                     suggest = (history_index === 0) ? false : true;
                 }
+            }
+
+            /* type characters */
+            else if (keyCode === 32
+                || keyCode === 222
+                || keyCode === 220
+                || (
+                    (keyCode >= 45 && keyCode <= 195)
+                    && !(keyCode >= 112 && keyCode <= 123)
+                    && keyCode != 46
+                    && keyCode != 91
+                    && keyCode != 93
+                    && keyCode != 144
+                    && keyCode != 145
+                    && keyCode != 45
+                )
+            ){
+                type(e.key);
+                history_index = 0;
+                suggest = false;
+                $('terminal content').scrollTop($('terminal content').prop("scrollHeight"));
             }
         });
 
@@ -382,7 +383,7 @@ else{
             $('terminal content').append('<line class="current"><path>'+path+'</path> <sp></sp> <t><bl></bl></t></line>');
         }
         function addToHistory(command) {
-            if ((command.length && command_history.length === 0) || (command_history[command_history.length-1] !== command))
+            if (command.length >= 2 &&  (command_history.length === 0 || command_history[command_history.length-1] !== command))
                 command_history[command_history.length] = command;
         }
         function normalizeHtml() {
