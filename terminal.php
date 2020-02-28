@@ -133,6 +133,14 @@ class TerminalPHP{
         return $commands;
     }
 
+    /**
+     * Array of All Commands
+     * @return array
+     */
+    public function commandsList(){
+        return array_merge(explode("\n", $this->ls('/usr/bin')), get_class_methods('CustomCommands'));
+    }
+
 
 
 
@@ -246,6 +254,11 @@ else{
       footer a{ text-decoration: none; color: #fdbc40; }
       @keyframes blink { 0% { opacity: 1} 50% { opacity: 0} 100% { opacity: 1} }
     </style>
+
+    <script type="text/javascript">
+        let commands_list = <?php print_r(json_encode($terminal->commandsList())); ?>;
+    </script>
+
     <script type="text/javascript">
         var path = '<?php echo $terminal->pwd();?>';
         var command = '';
@@ -253,6 +266,10 @@ else{
         var history_index = 0;
         var suggest = false;
         var blink_position = 0;
+        var autocomplete_position = 0;
+        var autocomplete_search_for = '';
+        var autocomplete_temp_results = [];
+        var autocomplete_current_result = '';
 
         $(document).keydown(function(e) {
             var keyCode = typeof e.which === "number" ? e.which : e.keyCode;
@@ -265,12 +282,14 @@ else{
                         backSpace();
                     else if (keyCode === 46)
                         reverseBackSpace();
+                    else if (keyCode === 9)
+                        autoComplete();
                 }
             }
 
             /* Ctrl + C */
             else if (e.ctrlKey && keyCode === 67){
-                addToHistory(command);
+                autocomplete_position = 0;
                 endLine();
                 newLine();
                 reset();
@@ -278,6 +297,11 @@ else{
 
             /* Enter */
             else if (keyCode === 13){
+
+                if (autocomplete_position !== 0){
+                    autocomplete_position = 0;
+                    command = autocomplete_current_result;
+                }
 
                 if (command.toLowerCase().split(' ')[0] in commands)
                     commands[command.toLowerCase().split(' ')[0]](command.split(' ').slice(1));
@@ -298,12 +322,18 @@ else{
                 addToHistory(command);
                 newLine();
                 reset();
+                $('terminal content').scrollTop($('terminal content').prop("scrollHeight"));
             }
 
             /* Home, End, Left and Right (change blink position) */
             else if ((keyCode === 35 || keyCode === 36 || keyCode === 37 || keyCode === 39) && command !== ''){
                 e.preventDefault();
                 $('line.current bl').remove();
+
+                if (autocomplete_position !== 0){
+                    autocomplete_position = 0;
+                    command = autocomplete_current_result;
+                }
 
                 if (keyCode === 35)
                     blink_position = 0;
@@ -317,7 +347,7 @@ else{
                 if (keyCode === 39 && blink_position !== 0)
                     blink_position++;
 
-                printTypedCommand();
+                printCommand();
                 normalizeHtml();
             }
 
@@ -330,7 +360,7 @@ else{
 
                     history_index--;
                     command = command_history[command_history.length+history_index];
-                    printTypedCommand();
+                    printCommand();
                     normalizeHtml();
                     suggest = true;
                 }
@@ -341,7 +371,7 @@ else{
 
                     history_index++;
                     command = (history_index === 0) ? '' : command_history[command_history.length+history_index];
-                    printTypedCommand();
+                    printCommand();
                     normalizeHtml();
                     suggest = (history_index === 0) ? false : true;
                 }
@@ -363,8 +393,6 @@ else{
                 )
             ){
                 type(e.key);
-                history_index = 0;
-                suggest = false;
                 $('terminal content').scrollTop($('terminal content').prop("scrollHeight"));
             }
         });
@@ -373,6 +401,8 @@ else{
             command = '';
             history_index = 0;
             blink_position = 0;
+            autocomplete_position = 0;
+            autocomplete_current_result = '';
             suggest = false;
         }
         function endLine() {
@@ -392,26 +422,46 @@ else{
 
             $('line.current t').html(nres.replace('&lt;bl&gt;&lt;/bl&gt;', '<bl></bl>'));
         }
-        function printTypedCommand() {
-            let part1 = command.substr(0, command.length + blink_position);
-            let part2 = command.substr(command.length + blink_position);
+        function printCommand(cmd = '') {
+            if (cmd === '')
+                cmd = command;
+            else
+                blink_position = 0;
+
+            let part1 = cmd.substr(0, cmd.length + blink_position);
+            let part2 = cmd.substr(cmd.length + blink_position);
 
             $('line.current t').html(part1 + '<bl></bl>' + part2);
         }
         function type(t) {
+            history_index = 0;
+            suggest = false;
+
+            if (autocomplete_position !== 0){
+                autocomplete_position = 0;
+                command = autocomplete_current_result;
+            }
+            if (command[command.length-1] === '/' && t === '/')
+                return;
+
             let part1 = command.substr(0, command.length + blink_position);
             let part2 = command.substr(command.length + blink_position);
             command = part1+t+part2;
 
-            printTypedCommand();
+            printCommand();
             normalizeHtml();
         }
         function backSpace() {
+            if (autocomplete_position !== 0){
+                autocomplete_position = 0;
+                command = autocomplete_current_result;
+            }
+
             let part1 = command.substr(0, command.length + blink_position);
             let part2 = command.substr(command.length + blink_position);
             command = part1.substr(0, part1.length-1)+part2;
 
-            printTypedCommand();
+            printCommand();
             normalizeHtml();
         }
         function reverseBackSpace() {
@@ -422,8 +472,61 @@ else{
             if (blink_position !== 0)
                 blink_position++;
 
-            printTypedCommand();
+            printCommand();
             normalizeHtml();
+        }
+        function autoComplete() {
+            if(autocomplete_search_for !== command){
+                autocomplete_search_for = command;
+                autocomplete_temp_results = [];
+
+                if (command.split(' ').length === 1) {
+                    let cmdlist = commands_list.concat(Object.keys(commands));
+                    autocomplete_temp_results = cmdlist
+                        .filter(function (cm) {return (cm.length > command.length && cm.substr(0, command.length).toLowerCase() == command.toLowerCase()) ? true : false;})
+                        .reverse().sort(function (a, b) {return b.length - a.length;});
+                }
+
+                else if (command.split(' ').length === 2){
+                    let cmd = command.split(' ')[0];
+                    let cmd_parameter = command.split(' ')[1];
+                    var temp_cmd = '';
+
+                    if (cmd === 'cd' || cmd === 'cp' || cmd === 'mv' || cmd === 'cat'){
+                        switch (cmd) {
+                            case "cd": temp_cmd = 'ls -d '+cmd_parameter+'*/'; break;
+                            case "cp":case "mv": temp_cmd = 'ls -d '+cmd_parameter+'*/'; break;
+                            case "cat": temp_cmd = 'ls -p | grep -v /'; break;
+                            default: temp_cmd = '';
+                        }
+
+                        $.ajax({
+                            type: 'POST',
+                            async: false,
+                            data: {command: temp_cmd, path: path},
+                            cache: false,
+                            success: function( response ){
+                                response = $.parseJSON(response);
+                                autocomplete_temp_results = response.result.split('<br>')
+                                    .filter(function (cm) {return (cm.length !== 0) ? true : false;});
+                            }
+                        });
+                    }
+                }
+            }
+
+            if (autocomplete_temp_results.length && autocomplete_temp_results.length > Math.abs(autocomplete_position)){
+                autocomplete_position--;
+                autocomplete_current_result = ((command.split(' ').length === 2) ? command.split(' ')[0]+' ' : '')+autocomplete_temp_results[autocomplete_temp_results.length+autocomplete_position];
+                printCommand(autocomplete_current_result);
+                normalizeHtml();
+            }
+            else{
+                autocomplete_position = 0;
+                autocomplete_current_result = '';
+                printCommand();
+                normalizeHtml();
+            }
         }
 
 
@@ -433,7 +536,7 @@ else{
 
         var commands = {
             'clear' : clear,
-            'history': history,
+            'history': history
         };
 
         function clear(){
