@@ -12,6 +12,9 @@ define('KEY', 'Mmbuge8maD5VAUMc');
 
 if (KEY != '' && !isset($_GET['key']) && $_GET['key'] != KEY)
     header('location: /');
+    
+if(!function_exists('shell_exec'))
+    die('Sorry, this server has blocked shell access :(');
 
 class CustomCommands{
 
